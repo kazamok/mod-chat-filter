@@ -1,0 +1,39 @@
+[worldserver]
+
+###################################################################################################
+# CHAT FILTER MODULE
+#
+#    ChatFilter.Enable
+#        Description: Enables or disables the Chat Filter module.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+ChatFilter.Enable = 1
+
+#    ChatFilter.Log.Enable
+#        Description: Enables logging of filtered chat messages.
+#                     Logs are saved in 'logs/chatfilter/YYYY-MM-DD.log'.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+ChatFilter.Log.Enable = 1
+
+#    ChatFilter.Badwords
+#        Description: A comma-separated list of words to filter from chat.
+#                     The check is case-insensitive.
+#        Default:     "badword1,badword2,badword3"
+
+ChatFilter.Badwords = "욕설,바보,멍청이"
+
+#    ChatFilter.Sender.SeeMessage
+#        Description: Allows the sender to see their own filtered message.
+#                     The message will still be blocked for all other players.
+#        Default:     0 - (Disabled, sender does not see the message)
+#                     1 - (Enabled, sender sees their own message)
+#
+#        Note: Enabling this feature is more complex and may not be supported initially.
+#              For now, it is recommended to keep it disabled.
+
+ChatFilter.Sender.SeeMessage = 0
+
+###################################################################################################
