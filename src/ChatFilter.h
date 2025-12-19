@@ -11,8 +11,8 @@ class ChatFilter : public PlayerScript
 public:
     ChatFilter();
 
-    void OnPlayerChat(Player* player, uint32 type, uint32 lang, std::string& msg);
-    void OnPlayerChat(Player* player, uint32 type, uint32 lang, std::string& msg, Channel* channel);
+    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, std::string& msg);
+    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, std::string& msg, Channel* channel);
 
 private:
     bool IsBadWord(const std::string& msg);

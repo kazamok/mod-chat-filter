@@ -18,6 +18,20 @@ ChatFilter.Enable = 1
 
 ChatFilter.Log.Enable = 1
 
+#    ChatFilter.Mute.Enable
+#        Description: Enables muting players for a duration after using a bad word.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+ChatFilter.Mute.Enable = 1
+
+#    ChatFilter.Mute.Duration
+#        Description: The duration in seconds a player is muted for after using a bad word.
+#        Default:     60
+
+ChatFilter.Mute.Duration = 60
+
+
 #    ChatFilter.Badwords
 #        Description: A comma-separated list of words to filter from chat.
 #                     The check is case-insensitive.
