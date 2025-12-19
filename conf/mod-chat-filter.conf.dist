@@ -37,7 +37,7 @@ ChatFilter.Mute.Duration = 60
 #                     The check is case-insensitive.
 #        Default:     "badword1,badword2,badword3"
 
-ChatFilter.Badwords = "애새끼,븅신,병신,씨발,조뚜"
+ChatFilter.Badwords = "욕설,바보,멍청이"
 
 #    ChatFilter.Sender.SeeMessage
 #        Description: Allows the sender to see their own filtered message.
@@ -51,4 +51,3 @@ ChatFilter.Badwords = "애새끼,븅신,병신,씨발,조뚜"
 ChatFilter.Sender.SeeMessage = 0
 
 ###################################################################################################
-

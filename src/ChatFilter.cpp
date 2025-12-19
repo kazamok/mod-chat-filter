@@ -227,6 +227,14 @@ bool ChatFilter::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, st
     return OnPlayerCanUseChat(player, type, lang, msg);
 }
 
+// Handler for Private messages (Whispers)
+bool ChatFilter::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, std::string& msg, Player* /*receiver*/)
+{
+    // The logic is identical to the general OnPlayerCanUseChat, except for the receiver parameter.
+    // Call the general handler.
+    return OnPlayerCanUseChat(player, type, lang, msg);
+}
+
 extern "C" void AddSC_mod_chat_filter()
 {
     new ChatFilterConfig();
