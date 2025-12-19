@@ -92,17 +92,33 @@ bool ChatFilter::IsBadWord(const std::string& msg)
     std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(),
         [](unsigned char c){ return std::tolower(c); });
 
-    // DEBUG LOG: Message being checked
-    std::stringstream debug_ss;
-    debug_ss << "IsBadWord 검사 중: '" << lower_msg << "'";
-    LOG_INFO("chatfilter.debug", debug_ss.str().c_str());
+    // Clean the message: remove spaces and common bypass characters
+    std::string cleaned_msg;
+    for (char c : lower_msg) {
+        // Use static_cast<unsigned char> for isspace to avoid undefined behavior
+        if (!std::isspace(static_cast<unsigned char>(c)) &&
+            c != '!' && c != '@' && c != '#' && c != '$' && c != '%' && c != '^' &&
+            c != '&' && c != '*' && c != '(' && c != ')' && c != '-' && c != '=' &&
+            c != '+' && c != '[' && c != ']' && c != '{' && c != '}' && c != ';' &&
+            c != ':' && c != '\'' && c != '"' && c != ',' && c != '.' && c != '/' &&
+            c != '?' && c != '<' && c != '>' && c != '`' && c != '~' && c != '\\' &&
+            c != '|')
+        {
+            cleaned_msg += c;
+        }
+    }
+
+    // DEBUG LOG: Message being checked after cleaning
+    std::stringstream debug_ss_cleaned;
+    debug_ss_cleaned << "IsBadWord (cleaned) 검사 중: '" << cleaned_msg << "'";
+    LOG_INFO("chatfilter.debug", debug_ss_cleaned.str().c_str());
 
     for (const auto& badword : cf_badwords) {
         // DEBUG LOG: Badword comparison
         std::stringstream compare_ss;
         compare_ss << "  금지 단어 '" << badword << "'와 비교 중...";
         LOG_INFO("chatfilter.debug", compare_ss.str().c_str());
-        if (lower_msg.find(badword) != std::string::npos) {
+        if (cleaned_msg.find(badword) != std::string::npos) {
             LOG_INFO("chatfilter.debug", "  -> 금지 단어 발견!");
             return true;
         }
