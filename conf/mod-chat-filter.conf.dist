@@ -27,17 +27,10 @@ ChatFilter.Mute.Enable = 1
 
 #    ChatFilter.Mute.Duration
 #        Description: The duration in seconds a player is muted for after using a bad word.
-#        Default:     60
+#        Default:     60 (1분)
 
 ChatFilter.Mute.Duration = 60
 
-
-#    ChatFilter.Badwords
-#        Description: A comma-separated list of words to filter from chat.
-#                     The check is case-insensitive.
-#        Default:     "badword1,badword2,badword3"
-
-ChatFilter.Badwords = "욕설,바보,멍청이"
 
 #    ChatFilter.Sender.SeeMessage
 #        Description: Allows the sender to see their own filtered message.
@@ -49,5 +42,13 @@ ChatFilter.Badwords = "욕설,바보,멍청이"
 #              For now, it is recommended to keep it disabled.
 
 ChatFilter.Sender.SeeMessage = 0
+
+
+#    ChatFilter.Database_Refresh.Time
+#        Description: 데이터베이스에 접속해 필터링 단어를 새로 수집하는 시간 간격(초)
+#                     
+#        Default:     60 (1분)
+
+ChatFilter.Database_Refresh.Time = 60
 
 ###################################################################################################

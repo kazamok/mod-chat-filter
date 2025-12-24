@@ -3,6 +3,7 @@
 #include "Log.h"
 #include "WorldSessionMgr.h"
 #include "AccountMgr.h"
+#include "DatabaseEnv.h" // Required for database access
 #include <fstream>
 #include <ctime>
 #include <filesystem>
@@ -20,40 +21,19 @@ bool cf_sender_see_message; // Not used yet, but loaded
 // Muted players map <PlayerGUID, MuteEndTime>
 std::map<uint32, time_t> muted_players;
 
-// Helper to split the badwords string
-void split(const std::string& s, char delim, std::vector<std::string>& elems) {
-    std::stringstream ss(s);
-    std::string item;
-    while (std::getline(ss, item, delim)) {
-        if (!item.empty()) {
-            // Convert to lowercase for case-insensitive comparison
-            std::transform(item.begin(), item.end(), item.begin(),
-                [](unsigned char c){ return std::tolower(c); });
-            elems.push_back(item);
-        }
-    }
-}
-
-class ChatFilterConfig : public WorldScript
+// This script now handles both config and database loading.
+class ChatFilterManagerScript : public WorldScript
 {
 public:
-    ChatFilterConfig() : WorldScript("ChatFilterConfig") {}
+    ChatFilterManagerScript() : WorldScript("ChatFilterManagerScript") {}
 
+    // Load configuration settings from the .conf file
     void OnAfterConfigLoad(bool reload) override
     {
         cf_enabled = sConfigMgr->GetOption<bool>("ChatFilter.Enable", true);
         cf_log_enabled = sConfigMgr->GetOption<bool>("ChatFilter.Log.Enable", true);
         cf_mute_enabled = sConfigMgr->GetOption<bool>("ChatFilter.Mute.Enable", true);
         cf_mute_duration = sConfigMgr->GetOption<uint32>("ChatFilter.Mute.Duration", 60);
-        std::string badwords_str = sConfigMgr->GetOption<std::string>("ChatFilter.Badwords", "badword1,badword2");
-        
-        // DEBUG LOG: Print raw badwords_str
-        std::stringstream raw_badwords_ss;
-        raw_badwords_ss << "설정 파일에서 읽은 raw badwords_str: '" << badwords_str << "'";
-        LOG_INFO("server.loading", raw_badwords_ss.str().c_str());
-
-        cf_badwords.clear();
-        split(badwords_str, ',', cf_badwords);
 
         if (cf_enabled) {
             LOG_INFO("server.loading", "채팅 필터 모듈이 활성화되었습니다.");
@@ -65,21 +45,54 @@ public:
                 ss << "채팅 필터 자동 음소거 기능이 활성화되었습니다. (지속시간: " << cf_mute_duration << "초)";
                 LOG_INFO("server.loading", ss.str().c_str());
             }
+        }
+    }
 
-            // DEBUG LOG: Print loaded badwords
-            if (!cf_badwords.empty()) {
-                std::stringstream badwords_log_ss;
-                badwords_log_ss << "로드된 금지 단어: ";
-                for (size_t i = 0; i < cf_badwords.size(); ++i) {
-                    badwords_log_ss << "'" << cf_badwords[i] << "'";
-                    if (i < cf_badwords.size() - 1) {
-                        badwords_log_ss << ", ";
-                    }
+    // Load bad words from the database
+    void OnLoadCustomDatabaseTable() override
+    {
+        if (!cf_enabled)
+        {
+            return;
+        }
+
+        LOG_INFO("server.loading", "데이터베이스에서 금지 단어를 로드합니다...");
+        uint32 count = 0;
+        cf_badwords.clear();
+
+        QueryResult result = CharacterDatabase.Query("SELECT string FROM `mod-chat-filter`");
+
+        if (result)
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                std::string badword = fields[0].Get<std::string>();
+
+                // Convert to lowercase for case-insensitive comparison
+                std::transform(badword.begin(), badword.end(), badword.begin(),
+                    [](unsigned char c){ return std::tolower(c); });
+                
+                cf_badwords.push_back(badword);
+                count++;
+            } while (result->NextRow());
+        }
+
+        std::stringstream ss;
+        ss << ">> " << count << "개의 금지 단어를 로드했습니다.";
+        LOG_INFO("server.loading", ss.str().c_str());
+
+        // DEBUG LOG: Print loaded badwords
+        if (!cf_badwords.empty()) {
+            std::stringstream badwords_log_ss;
+            badwords_log_ss << "로드된 금지 단어: ";
+            for (size_t i = 0; i < cf_badwords.size(); ++i) {
+                badwords_log_ss << "'" << cf_badwords[i] << "'";
+                if (i < cf_badwords.size() - 1) {
+                    badwords_log_ss << ", ";
                 }
-                LOG_INFO("server.loading", badwords_log_ss.str().c_str());
-            } else {
-                LOG_INFO("server.loading", "금지 단어 목록이 비어 있습니다.");
             }
+            LOG_INFO("server.loading", badwords_log_ss.str().c_str());
         }
     }
 };
@@ -253,6 +266,6 @@ bool ChatFilter::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, st
 
 extern "C" void AddSC_mod_chat_filter()
 {
-    new ChatFilterConfig();
+    new ChatFilterManagerScript();
     new ChatFilter();
 }
