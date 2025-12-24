@@ -25,13 +25,6 @@ ChatFilter.Log.Enable = 1
 
 ChatFilter.Mute.Enable = 1
 
-#    ChatFilter.Mute.Duration
-#        Description: The duration in seconds a player is muted for after using a bad word.
-#        Default:     60 (1분)
-
-ChatFilter.Mute.Duration = 60
-
-
 #    ChatFilter.Sender.SeeMessage
 #        Description: Allows the sender to see their own filtered message.
 #                     The message will still be blocked for all other players.

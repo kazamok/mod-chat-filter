@@ -16,7 +16,7 @@ public:
     bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, std::string& msg, Player* receiver);
 
 private:
-    bool IsBadWord(const std::string& msg);
+    int8_t IsBadWord(const std::string& msg);
     void LogMessage(Player* player, const std::string& originalMsg);
 };
 

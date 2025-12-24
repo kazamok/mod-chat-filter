@@ -3,19 +3,21 @@
 #include "Log.h"
 #include "WorldSessionMgr.h"
 #include "AccountMgr.h"
+#include "BanMgr.h"
 #include "DatabaseEnv.h" // Required for database access
 #include <fstream>
 #include <ctime>
 #include <filesystem>
 #include <sstream>
 #include <map>
+#include <unordered_map>
 
 // Configuration storage
 bool cf_enabled;
 bool cf_log_enabled;
 bool cf_mute_enabled;
-uint32 cf_mute_duration;
-std::vector<std::string> cf_badwords;
+// std::vector<std::string> cf_badwords; // Old storage
+std::unordered_map<std::string, uint8_t> cf_badwords; // New: word -> level
 bool cf_sender_see_message; // Not used yet, but loaded
 
 // Muted players map <PlayerGUID, MuteEndTime>
@@ -33,7 +35,7 @@ public:
         cf_enabled = sConfigMgr->GetOption<bool>("ChatFilter.Enable", true);
         cf_log_enabled = sConfigMgr->GetOption<bool>("ChatFilter.Log.Enable", true);
         cf_mute_enabled = sConfigMgr->GetOption<bool>("ChatFilter.Mute.Enable", true);
-        cf_mute_duration = sConfigMgr->GetOption<uint32>("ChatFilter.Mute.Duration", 60);
+        // cf_mute_duration is no longer used from config
 
         if (cf_enabled) {
             LOG_INFO("server.loading", "채팅 필터 모듈이 활성화되었습니다.");
@@ -41,9 +43,7 @@ public:
                 LOG_INFO("server.loading", "채팅 필터 로깅이 활성화되었습니다.");
             }
             if (cf_mute_enabled) {
-                std::stringstream ss;
-                ss << "채팅 필터 자동 음소거 기능이 활성화되었습니다. (지속시간: " << cf_mute_duration << "초)";
-                LOG_INFO("server.loading", ss.str().c_str());
+                LOG_INFO("server.loading", "채팅 필터 자동 처벌 기능이 활성화되었습니다.");
             }
         }
     }
@@ -60,7 +60,8 @@ public:
         uint32 count = 0;
         cf_badwords.clear();
 
-        QueryResult result = CharacterDatabase.Query("SELECT string FROM `mod-chat-filter`");
+        // Load both word and level
+        QueryResult result = CharacterDatabase.Query("SELECT string, level FROM `mod-chat-filter`");
 
         if (result)
         {
@@ -68,12 +69,13 @@ public:
             {
                 Field* fields = result->Fetch();
                 std::string badword = fields[0].Get<std::string>();
+                uint8_t level = fields[1].Get<uint8_t>();
 
                 // Convert to lowercase for case-insensitive comparison
                 std::transform(badword.begin(), badword.end(), badword.begin(),
                     [](unsigned char c){ return std::tolower(c); });
                 
-                cf_badwords.push_back(badword);
+                cf_badwords[badword] = level;
                 count++;
             } while (result->NextRow());
         }
@@ -81,25 +83,13 @@ public:
         std::stringstream ss;
         ss << ">> " << count << "개의 금지 단어를 로드했습니다.";
         LOG_INFO("server.loading", ss.str().c_str());
-
-        // DEBUG LOG: Print loaded badwords
-        if (!cf_badwords.empty()) {
-            std::stringstream badwords_log_ss;
-            badwords_log_ss << "로드된 금지 단어: ";
-            for (size_t i = 0; i < cf_badwords.size(); ++i) {
-                badwords_log_ss << "'" << cf_badwords[i] << "'";
-                if (i < cf_badwords.size() - 1) {
-                    badwords_log_ss << ", ";
-                }
-            }
-            LOG_INFO("server.loading", badwords_log_ss.str().c_str());
-        }
     }
 };
 
 ChatFilter::ChatFilter() : PlayerScript("ChatFilter") {}
 
-bool ChatFilter::IsBadWord(const std::string& msg)
+// Returns the punishment level of the bad word found, or -1 if no bad word is found
+int8_t ChatFilter::IsBadWord(const std::string& msg)
 {
     std::string lower_msg = msg;
     std::transform(lower_msg.begin(), lower_msg.end(), lower_msg.begin(),
@@ -108,7 +98,6 @@ bool ChatFilter::IsBadWord(const std::string& msg)
     // Clean the message: remove spaces and common bypass characters
     std::string cleaned_msg;
     for (char c : lower_msg) {
-        // Use static_cast<unsigned char> for isspace to avoid undefined behavior
         if (!std::isspace(static_cast<unsigned char>(c)) &&
             c != '!' && c != '@' && c != '#' && c != '$' && c != '%' && c != '^' &&
             c != '&' && c != '*' && c != '(' && c != ')' && c != '-' && c != '=' &&
@@ -121,23 +110,14 @@ bool ChatFilter::IsBadWord(const std::string& msg)
         }
     }
 
-    // DEBUG LOG: Message being checked after cleaning
-    std::stringstream debug_ss_cleaned;
-    debug_ss_cleaned << "IsBadWord (cleaned) 검사 중: '" << cleaned_msg << "'";
-    LOG_INFO("chatfilter.debug", debug_ss_cleaned.str().c_str());
-
-    for (const auto& badword : cf_badwords) {
-        // DEBUG LOG: Badword comparison
-        std::stringstream compare_ss;
-        compare_ss << "  금지 단어 '" << badword << "'와 비교 중...";
-        LOG_INFO("chatfilter.debug", compare_ss.str().c_str());
+    for (const auto& pair : cf_badwords) {
+        const std::string& badword = pair.first;
         if (cleaned_msg.find(badword) != std::string::npos) {
-            LOG_INFO("chatfilter.debug", "  -> 금지 단어 발견!");
-            return true;
+            return pair.second; // Return the level
         }
     }
-    LOG_INFO("chatfilter.debug", "  -> 금지 단어 없음.");
-    return false;
+
+    return -1; // No bad word found
 }
 
 void ChatFilter::LogMessage(Player* player, const std::string& originalMsg)
@@ -146,7 +126,6 @@ void ChatFilter::LogMessage(Player* player, const std::string& originalMsg)
         return;
     }
 
-    // Create directory if it doesn't exist
     if (!std::filesystem::is_directory("logs/chatfilter") || !std::filesystem::exists("logs/chatfilter")) {
         std::filesystem::create_directory("logs/chatfilter");
     }
@@ -182,85 +161,93 @@ void ChatFilter::LogMessage(Player* player, const std::string& originalMsg)
 // Handler for Say, Yell, Whisper, etc.
 bool ChatFilter::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, std::string& msg)
 {
-    // DEBUG LOG: OnPlayerCanUseChat triggered. (This must be the absolute first line in this function)
-    LOG_INFO("chatfilter.debug", "OnPlayerCanUseChat triggered.");
-
-    // Original content starts here
-    std::stringstream chat_debug_ss;
-    chat_debug_ss << "OnPlayerCanUseChat: Player '" << player->GetName() << "' sent: '" << msg << "'";
-    LOG_INFO("chatfilter.debug", chat_debug_ss.str().c_str());
-
     if (!cf_enabled || player->IsGameMaster() || lang == LANG_ADDON) {
-        if (player->IsGameMaster()) {
-            LOG_INFO("chatfilter.debug", "GM이므로 필터링 건너뛰기.");
-        }
-        if (lang == LANG_ADDON) {
-            LOG_INFO("chatfilter.debug", "애드온 메시지이므로 필터링 건너뛰기.");
-        }
-        return true; // Allow message if filter is disabled, player is GM, or it's an addon message
+        return true;
     }
 
-    // Check if player is muted
     if (cf_mute_enabled) {
         auto it = muted_players.find(player->GetGUID().GetCounter());
         if (it != muted_players.end()) {
             time_t now = time(nullptr);
             if (now < it->second) {
-                // Player is still muted
                 long remaining_time = long(it->second - now);
                 msg.clear();
                 std::stringstream ss;
-                ss << "채팅이 임시로 금지되었습니다. " << remaining_time << "초 후에 다시 시도하세요.";
+                ss << "Chat has been temporarily blocked. Please try again in " << remaining_time << " seconds.";
                 ChatHandler(player->GetSession()).SendSysMessage(ss.str().c_str());
-                LOG_INFO("chatfilter.debug", "플레이어 음소거 중. 메시지 차단.");
-                return false; // Block message
+                return false;
             }
             else {
-                // Mute expired, remove from map
                 muted_players.erase(it);
-                LOG_INFO("chatfilter.debug", "플레이어 음소거 만료. 음소거 해제.");
             }
         }
     }
     
-    if (IsBadWord(msg))
+    int8_t badWordLevel = IsBadWord(msg);
+
+    if (badWordLevel != -1)
     {
         LogMessage(player, msg);
         msg.clear(); 
-        LOG_INFO("chatfilter.debug", "금지 단어 발견, 메시지 차단.");
-        
-        if (cf_mute_enabled && cf_mute_duration > 0) {
-            time_t mute_end_time = time(nullptr) + cf_mute_duration;
-            muted_players[player->GetGUID().GetCounter()] = mute_end_time;
+
+        if (cf_mute_enabled) {
+            uint32 mute_duration = 0;
             std::stringstream ss;
-            ss << "부적절한 언어 사용으로 메시지가 차단되었으며, " << cf_mute_duration << "초 동안 채팅이 금지됩니다.";
-            ChatHandler(player->GetSession()).SendSysMessage(ss.str().c_str());
-            std::stringstream muted_log_ss;
-            muted_log_ss << "플레이어 '" << player->GetName() << "'가 " << cf_mute_duration << "초 동안 음소거되었습니다.";
-            LOG_INFO("chatfilter.debug", muted_log_ss.str().c_str());
+
+            switch (badWordLevel)
+            {
+                case 0: // Warning: 1 min mute
+                    mute_duration = 60;
+                    muted_players[player->GetGUID().GetCounter()] = time(nullptr) + mute_duration;
+                    ss << "Using profanity will result in a 1 minute chat blocked.";
+                    ChatHandler(player->GetSession()).SendSysMessage(ss.str().c_str());
+                    break;
+                case 1: // Medium: 3 min mute
+                    mute_duration = 180;
+                    muted_players[player->GetGUID().GetCounter()] = time(nullptr) + mute_duration;
+                    ss << "Using profanity will result in a 3 minute chat blocked.";
+                    ChatHandler(player->GetSession()).SendSysMessage(ss.str().c_str());
+                    break;
+                case 2: // Severe: 5 min ban
+                {
+                    uint32 ban_duration = 300;
+                    std::string accountName;
+                    uint32 accountId = player->GetSession()->GetAccountId();
+                    if (AccountMgr::GetName(accountId, accountName))
+                    {
+                        // Ban the account for 5 minutes
+                        sBan->BanAccount(accountName, "5m", "Use of inappropriate language", "Server");
+                        ss << "Using profanity will result in a 5 minute account blocked.";
+                        ChatHandler(player->GetSession()).SendSysMessage(ss.str().c_str());
+                        // Kick the player
+                        player->GetSession()->KickPlayer();
+                    }
+                    break;
+                }
+                default:
+                    // Fallback for any other level that might be in the DB
+                    ChatHandler(player->GetSession()).SendSysMessage("Your message contained inappropriate language and was not sent.");
+                    break;
+            }
         } else {
+            // Muting/punishment is disabled, just block the message
             ChatHandler(player->GetSession()).SendSysMessage("Your message contained inappropriate language and was not sent.");
-            LOG_INFO("chatfilter.debug", "금지 단어 발견, 메시지 차단 (음소거 비활성화).");
         }
         return false; // Block message
-    } else {
-        LOG_INFO("chatfilter.debug", "메시지 필터링 통과.");
     }
+
     return true; // Allow message
 }
 
 // Handler for Channel messages
 bool ChatFilter::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, std::string& msg, Channel* /*channel*/)
 {
-    // The logic is identical, so we just call the other handler.
     return OnPlayerCanUseChat(player, type, lang, msg);
 }
 
 // Handler for Private messages (Whispers)
 bool ChatFilter::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang, std::string& msg, Player* /*receiver*/)
 {
-    // The logic is identical to the general OnPlayerCanUseChat, except for the receiver parameter.
-    // Call the general handler.
     return OnPlayerCanUseChat(player, type, lang, msg);
 }
 
